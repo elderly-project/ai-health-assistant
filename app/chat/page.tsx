@@ -7,21 +7,90 @@ import { cn } from '@/lib/utils';
 import { Database } from '@/supabase/functions/_lib/database';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useChat } from 'ai/react';
+import { useEffect, useState } from 'react';
+import { toast } from '@/components/ui/use-toast';
 
 export default function ChatPage() {
   const supabase = createClientComponentClient<Database>();
+  const [userData, setUserData] = useState<any>(null);
+  const [userDataLoaded, setUserDataLoaded] = useState(false);
 
   const generateEmbedding = usePipeline(
     'feature-extraction',
     'Supabase/gte-small'
   );
 
+  // Fetch user data on component load
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        // Get current user
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+
+        // Check if user has completed onboarding
+        const { data: profileData, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', userData.user?.id)
+          .single();
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Error fetching profile:', profileError);
+        }
+
+        // Fetch medications
+        const { data: medsData, error: medsError } = await supabase
+          .from('medications')
+          .select('*, documents(*)')
+          .eq('user_id', userData.user?.id);
+
+        if (medsError) {
+          console.error('Error fetching medications:', medsError);
+        }
+
+        // Fetch appointments
+        const { data: apptsData, error: apptsError } = await supabase
+          .from('appointments')
+          .select('*')
+          .eq('user_id', userData.user?.id)
+          .order('appointment_date', { ascending: true });
+
+        if (apptsError) {
+          console.error('Error fetching appointments:', apptsError);
+        }
+
+        // Format the data for the chat function
+        const formattedUserData = {
+          profile: profileData || {},
+          medications: medsData || [],
+          appointments: apptsData || []
+        };
+
+        setUserData(formattedUserData);
+        setUserDataLoaded(true);
+        
+        console.log('User data loaded for chat:', !!formattedUserData);
+
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        toast({
+          variant: 'destructive',
+          description: 'Failed to load your health information. Some chat features may be limited.',
+        });
+        setUserDataLoaded(true); // Set to true even on error so chat can still function
+      }
+    };
+
+    fetchUserData();
+  }, [supabase]);
+
   const { messages, input, handleInputChange, handleSubmit, isLoading } =
     useChat({
       api: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`,
     });
 
-  const isReady = !!generateEmbedding;
+  const isReady = !!generateEmbedding && userDataLoaded;
 
   return (
     <div className="max-w-6xl flex flex-col items-center w-full h-full">
@@ -79,9 +148,14 @@ export default function ChatPage() {
             } = await supabase.auth.getSession();
 
             if (!session) {
+              toast({
+                variant: 'destructive',
+                description: 'You must be logged in to use the chat.',
+              });
               return;
             }
 
+            // Send the user data with every message to maintain consistency
             handleSubmit(e, {
               options: {
                 headers: {
@@ -89,6 +163,7 @@ export default function ChatPage() {
                 },
                 body: {
                   embedding,
+                  userData, // Always send user data to maintain consistency
                 },
               },
             });
@@ -102,7 +177,7 @@ export default function ChatPage() {
             onChange={handleInputChange}
           />
           <Button type="submit" disabled={!isReady}>
-            Send
+            {isReady ? 'Send' : 'Loading...'}
           </Button>
         </form>
       </div>
