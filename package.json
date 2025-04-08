@@ -2,7 +2,7 @@
   "name": "chatbotdev",
   "version": "1.0.0",
   "description": "Health Assistant Chatbot",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
