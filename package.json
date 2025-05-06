@@ -11,6 +11,7 @@
     "test": "node test-chat.js"
   },
   "dependencies": {
+    "@11labs/react": "^0.1.2",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-toast": "^1.1.5",
     "@supabase/auth-helpers-nextjs": "latest",
@@ -23,6 +24,7 @@
     "clsx": "^2.0.0",
     "common-tags": "^1.8.2",
     "dotenv": "^16.4.7",
+    "elevenlabs": "^1.56.0",
     "lucide-react": "^0.284.0",
     "next": "latest",
     "node-fetch": "^3.3.0",
