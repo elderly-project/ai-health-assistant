@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { RefreshCw, ExternalLink, ArrowLeft, PhoneCall, PhoneOff, Mic, MicOff } from 'lucide-react';
+import { RefreshCw, ArrowLeft, PhoneCall, PhoneOff, Mic, MicOff } from 'lucide-react';
 import { useConversation } from '@11labs/react';
 
 // This component follows the approach from ElevenLabs' Next.js quickstart guide
@@ -59,11 +59,6 @@ export function ElevenLabsReactAgent({ userData, onToggleToTextChat }: ElevenLab
       }
     }
   });
-  
-  // Handle direct link to ElevenLabs
-  const handleGoToElevenLabs = () => {
-    window.open(`https://elevenlabs.io/app/talk-to?agent_id=${process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID}&full=true`, '_blank');
-  };
   
   // Get a signed URL for the agent
   const getSignedUrl = async (): Promise<string | null> => {
@@ -274,15 +269,6 @@ export function ElevenLabsReactAgent({ userData, onToggleToTextChat }: ElevenLab
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={handleGoToElevenLabs}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-1"
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open in ElevenLabs
-          </Button>
-          <Button
             onClick={() => {
               if (connectionStatus === 'connected') {
                 stopConversation();
@@ -319,12 +305,6 @@ export function ElevenLabsReactAgent({ userData, onToggleToTextChat }: ElevenLab
             >
               Try Again
             </Button>
-            <Button 
-              onClick={handleGoToElevenLabs}
-              variant="secondary"
-            >
-              Open in ElevenLabs
-            </Button>
           </div>
           
           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
@@ -336,7 +316,6 @@ export function ElevenLabsReactAgent({ userData, onToggleToTextChat }: ElevenLab
               <li>Make sure your agent is published and active on ElevenLabs</li>
               <li>Check your API key and agent ID configuration</li>
               <li>Verify microphone permissions in your browser</li>
-              <li>Try the external link to confirm the agent works directly on ElevenLabs</li>
             </ol>
           </div>
           

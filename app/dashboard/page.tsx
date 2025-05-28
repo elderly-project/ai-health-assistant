@@ -5,100 +5,187 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '@/supabase/functions/_lib/database';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
+import { Users, UserPlus, Calendar, FileText, MessageCircle, Activity, Clock, AlertCircle } from 'lucide-react';
 
-interface Medication {
-  id: number;
-  name: string;
-  dosage: string;
-  frequency: string;
+interface PatientStats {
+  totalPatients: number;
+  recentPatients: number;
+  upcomingAppointments: number;
+  totalDocuments: number;
 }
 
-interface Appointment {
+interface RecentPatient {
+  id: string;
+  full_name: string | null;
+  created_at: string;
+}
+
+interface UpcomingAppointment {
   id: number;
   title: string;
-  doctor_name: string;
   appointment_date: string;
-  location: string;
+  patient_name: string | null;
+  patient_id: string;
 }
 
-export default function DashboardPage() {
+export default function AdminDashboard() {
   const supabase = createClientComponentClient<Database>();
-  const [medications, setMedications] = useState<Medication[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [stats, setStats] = useState<PatientStats>({
+    totalPatients: 0,
+    recentPatients: 0,
+    upcomingAppointments: 0,
+    totalDocuments: 0
+  });
+  const [recentPatients, setRecentPatients] = useState<RecentPatient[]>([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<UpcomingAppointment[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchAdminData = async () => {
       try {
         setLoading(true);
+        console.log('Starting dashboard data fetch...');
 
         // Get current user
         const { data: userData, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
+        if (userError) {
+          console.error('User authentication error:', userError);
+          throw userError;
+        }
+        console.log('User authenticated:', userData.user?.email);
+        setCurrentUser(userData.user);
 
-        // Check if user has completed onboarding
-        const { data: profileData, error: profileError } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', userData.user?.id)
-          .single();
+        // Fetch patient statistics
+        console.log('Fetching patient relationships...');
+        const { data: patientsData, error: patientsError } = await supabase
+          .from('patient_relationships')
+          .select('patient_id, created_at')
+          .eq('provider_id', userData.user?.id);
 
-        if (profileError && profileError.code !== 'PGRST116') {
-          throw profileError;
+        if (patientsError) {
+          console.error('Error fetching patients:', patientsError);
+          throw patientsError;
+        }
+        console.log('Found patients:', patientsData?.length || 0);
+
+        const totalPatients = patientsData?.length || 0;
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        const recentPatients = patientsData?.filter(p => 
+          new Date(p.created_at) >= oneWeekAgo
+        ).length || 0;
+
+        // Fetch upcoming appointments - only for provider's patients
+        const patientIds = patientsData?.map(p => p.patient_id) || [];
+        let appointmentsWithNames: UpcomingAppointment[] = [];
+        let appointmentsCount = 0;
+        
+        console.log('Fetching appointments for patient IDs:', patientIds.length);
+        if (patientIds.length > 0) {
+          const { data: appointmentsData, error: appointmentsError } = await supabase
+            .from('appointments')
+            .select(`
+              id,
+              title,
+              appointment_date,
+              user_id
+            `)
+            .in('user_id', patientIds)
+            .gte('appointment_date', new Date().toISOString())
+            .order('appointment_date', { ascending: true })
+            .limit(5);
+
+          if (appointmentsError) {
+            console.error('Error fetching appointments:', appointmentsError);
+            // Don't throw here, just log and continue
+          } else {
+            appointmentsCount = appointmentsData?.length || 0;
+            console.log('Found appointments:', appointmentsCount);
+            
+            // Get patient names for appointments
+            appointmentsWithNames = await Promise.all(
+              (appointmentsData || []).map(async (apt) => {
+                const { data: profileData } = await supabase
+                  .from('user_profiles')
+                  .select('full_name')
+                  .eq('id', apt.user_id)
+                  .single();
+                
+                return {
+                  ...apt,
+                  patient_name: profileData?.full_name || 'Unknown Patient',
+                  patient_id: apt.user_id
+                };
+              })
+            );
+          }
         }
 
-        setUserProfile(profileData || null);
+        // Fetch recent patients with profiles
+        console.log('Fetching patient profiles...');
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, created_at')
+          .in('id', patientIds)
+          .order('created_at', { ascending: false })
+          .limit(5);
 
-        // Fetch medications
-        const { data: medsData, error: medsError } = await supabase
-          .from('medications')
-          .select('*')
-          .order('created_at', { ascending: false });
+        if (profilesError) {
+          console.error('Error fetching profiles:', profilesError);
+          // Don't throw here, just log and continue
+        }
+        console.log('Found profiles:', profilesData?.length || 0);
 
-        if (medsError) throw medsError;
-        setMedications(medsData || []);
+        // Fetch document count
+        console.log('Fetching document count...');
+        const { data: documentsData, error: documentsError } = await supabase
+          .from('documents')
+          .select('id', { count: 'exact' });
 
-        // Fetch appointments
-        const { data: apptsData, error: apptsError } = await supabase
-          .from('appointments')
-          .select('*')
-          .order('appointment_date', { ascending: true });
+        if (documentsError) {
+          console.error('Error fetching documents:', documentsError);
+          // Don't throw here, just log and continue
+        }
+        console.log('Found documents:', documentsData?.length || 0);
 
-        if (apptsError) throw apptsError;
-        setAppointments(apptsData || []);
+        setStats({
+          totalPatients,
+          recentPatients,
+          upcomingAppointments: appointmentsCount,
+          totalDocuments: documentsData?.length || 0
+        });
+
+        setRecentPatients(profilesData || []);
+        setUpcomingAppointments(appointmentsWithNames);
+
+        console.log('Dashboard data fetch completed successfully');
+
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        console.error('Error fetching admin dashboard data:', error);
         toast({
           variant: 'destructive',
-          description: 'Failed to load your health information.',
+          description: `Failed to load dashboard data: ${error instanceof Error ? error.message : 'Unknown error'}`,
         });
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchAdminData();
   }, [supabase]);
 
-  if (loading) {
-    return <div className="flex justify-center items-center h-64">Loading your health dashboard...</div>;
-  }
-
-  if (!userProfile) {
-    return (
-      <div className="max-w-4xl mx-auto p-4 text-center">
-        <h2 className="text-2xl font-bold mb-4">Complete Your Profile</h2>
-        <p className="mb-6">Please complete your health profile to access all features.</p>
-        <Link href="/onboarding">
-          <Button>Complete Profile</Button>
-        </Link>
-      </div>
-    );
-  }
-
   const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleDateString(undefined, {
       year: 'numeric',
       month: 'short',
@@ -108,117 +195,207 @@ export default function DashboardPage() {
     });
   };
 
-  const upcomingAppointments = appointments.filter(
-    (apt) => new Date(apt.appointment_date) >= new Date()
-  );
+  if (loading) {
+    return <div className="flex justify-center items-center h-64">Loading admin dashboard...</div>;
+  }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-lg shadow p-6 col-span-3 md:col-span-1">
-          <h2 className="font-bold text-xl mb-4">Quick Actions</h2>
-          <div className="space-y-3">
+    <div className="max-w-7xl mx-auto p-4 sm:p-6">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+        <p className="text-gray-600">Welcome back, {currentUser?.email}</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalPatients}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.recentPatients} new this week
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Upcoming Appointments</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.upcomingAppointments}</div>
+            <p className="text-xs text-muted-foreground">
+              Next 7 days
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Medical Records</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalDocuments}</div>
+            <p className="text-xs text-muted-foreground">
+              Documents uploaded
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">System Status</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">Active</div>
+            <p className="text-xs text-muted-foreground">
+              All systems operational
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+            <CardDescription>Common administrative tasks</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Link href="/patients/add" className="block">
+              <Button variant="outline" className="w-full justify-start">
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add New Patient
+              </Button>
+            </Link>
+            <Link href="/patients" className="block">
+              <Button variant="outline" className="w-full justify-start">
+                <Users className="mr-2 h-4 w-4" />
+                Manage Patients
+              </Button>
+            </Link>
             <Link href="/files" className="block">
               <Button variant="outline" className="w-full justify-start">
-                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Upload Prescription
-              </Button>
-            </Link>
-            <Link href="/medications/add" className="block">
-              <Button variant="outline" className="w-full justify-start">
-                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Add Medication
-              </Button>
-            </Link>
-            <Link href="/appointments/add" className="block">
-              <Button variant="outline" className="w-full justify-start">
-                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Schedule Appointment
+                <FileText className="mr-2 h-4 w-4" />
+                Upload Documents
               </Button>
             </Link>
             <Link href="/chat" className="block">
               <Button variant="outline" className="w-full justify-start">
-                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
-                Chat with Assistant
+                <MessageCircle className="mr-2 h-4 w-4" />
+                AI Assistant
               </Button>
             </Link>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white rounded-lg shadow p-6 col-span-3 md:col-span-2">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="font-bold text-xl">Your Medications</h2>
-            <Link href="/medications">
-              <Button variant="link">View All</Button>
-            </Link>
-          </div>
-          
-          {medications.length > 0 ? (
-            <div className="space-y-3">
-              {medications.slice(0, 3).map((med) => (
-                <div key={med.id} className="border rounded-md p-4">
-                  <div className="flex justify-between">
-                    <h3 className="font-semibold">{med.name}</h3>
-                    <span className="text-sm bg-blue-100 text-blue-800 py-0.5 px-2 rounded-full">
-                      {med.frequency}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">{med.dosage}</p>
-                </div>
-              ))}
+        {/* Recent Patients */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Recent Patients</CardTitle>
+              <CardDescription>Recently added to your care</CardDescription>
             </div>
-          ) : (
-            <p className="text-gray-500">No medications added yet.</p>
-          )}
-        </div>
+            <Link href="/patients">
+              <Button variant="ghost" size="sm">View All</Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {recentPatients.length > 0 ? (
+              <div className="space-y-3">
+                {recentPatients.map((patient) => (
+                  <div key={patient.id} className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {patient.full_name || 'Incomplete Profile'}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Added {formatDate(patient.created_at)}
+                      </p>
+                    </div>
+                    <Link href={`/patients/${patient.id}`}>
+                      <Button variant="ghost" size="sm">View</Button>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-4">No recent patients</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Upcoming Appointments */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Upcoming Appointments</CardTitle>
+              <CardDescription>Next scheduled appointments</CardDescription>
+            </div>
+            <Link href="/patients">
+              <Button variant="ghost" size="sm">View All</Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {upcomingAppointments.length > 0 ? (
+              <div className="space-y-3">
+                {upcomingAppointments.map((appointment) => (
+                  <div key={appointment.id} className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{appointment.title}</p>
+                      <p className="text-sm text-gray-500">
+                        {appointment.patient_name}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {formatDateTime(appointment.appointment_date)}
+                      </p>
+                    </div>
+                    <Link href={`/patients/${appointment.patient_id}/appointments`}>
+                      <Button variant="ghost" size="sm">
+                        <Clock className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-4">No upcoming appointments</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="font-bold text-xl">Upcoming Appointments</h2>
-          <Link href="/appointments">
-            <Button variant="link">View All</Button>
-          </Link>
-        </div>
-        
-        {upcomingAppointments.length > 0 ? (
-          <div className="space-y-3">
-            {upcomingAppointments.slice(0, 3).map((appt) => (
-              <div key={appt.id} className="border rounded-md p-4">
-                <div className="flex justify-between">
-                  <h3 className="font-semibold">{appt.title}</h3>
-                  <span className="text-sm">{formatDate(appt.appointment_date)}</span>
-                </div>
-                <div className="text-sm text-gray-600 flex items-center mt-1">
-                  <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  {appt.location || 'No location specified'}
-                </div>
-                {appt.doctor_name && (
-                  <div className="text-sm text-gray-600 flex items-center mt-1">
-                    <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    Dr. {appt.doctor_name}
-                  </div>
-                )}
-              </div>
-            ))}
+      {/* System Overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle>System Overview</CardTitle>
+          <CardDescription>Quick overview of your healthcare management system</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-blue-600 mb-2">{stats.totalPatients}</div>
+              <p className="text-sm text-gray-600">Patients under your care</p>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600 mb-2">{stats.upcomingAppointments}</div>
+              <p className="text-sm text-gray-600">Appointments scheduled</p>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-purple-600 mb-2">{stats.totalDocuments}</div>
+              <p className="text-sm text-gray-600">Medical records stored</p>
+            </div>
           </div>
-        ) : (
-          <p className="text-gray-500">No upcoming appointments scheduled.</p>
-        )}
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 } 

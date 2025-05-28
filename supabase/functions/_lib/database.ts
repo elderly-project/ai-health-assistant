@@ -105,6 +105,92 @@ export interface Database {
           }
         ]
       }
+      patient_relationships: {
+        Row: {
+          id: number
+          patient_id: string
+          provider_id: string
+          relationship_type: string
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          patient_id: string
+          provider_id: string
+          relationship_type?: string
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          patient_id?: string
+          provider_id?: string
+          relationship_type?: string
+          created_at?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_relationships_patient_id_fkey"
+            columns: ["patient_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_relationships_provider_id_fkey"
+            columns: ["provider_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      user_profiles: {
+        Row: {
+          id: string
+          full_name: string | null
+          date_of_birth: string | null
+          phone_number: string | null
+          emergency_contact: string | null
+          emergency_contact_phone: string | null
+          medical_conditions: string[] | null
+          allergies: string[] | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          full_name?: string | null
+          date_of_birth?: string | null
+          phone_number?: string | null
+          emergency_contact?: string | null
+          emergency_contact_phone?: string | null
+          medical_conditions?: string[] | null
+          allergies?: string[] | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          full_name?: string | null
+          date_of_birth?: string | null
+          phone_number?: string | null
+          emergency_contact?: string | null
+          emergency_contact_phone?: string | null
+          medical_conditions?: string[] | null
+          allergies?: string[] | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_profiles_id_fkey"
+            columns: ["id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       documents_with_storage_path: {

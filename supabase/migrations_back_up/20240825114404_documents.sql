@@ -79,62 +79,29 @@ on document_sections for select to authenticated using (
   )
 );
 
--- create function supabase_url()
--- returns text
--- language plpgsql
--- security definer
--- as $$
--- declare
---   secret_value text;
--- begin
---   select decrypted_secret into secret_value from vault.decrypted_secrets where name = 'supabase_url';
---   return secret_value;
--- end;
--- $$;
+-- MOVED TO fix_storage_schema.sql
+-- The handle_storage_update function and on_file_upload trigger are now defined in fix_storage_schema.sql
+-- to ensure proper functionality when pushing to cloud.
 
-create function private.handle_storage_update() 
-returns trigger 
-language plpgsql
-as $$
-declare
-  document_id bigint;
-  result int;
-begin
-  insert into documents (name, storage_object_id, created_by)
-    values (new.path_tokens[2], new.id, new.owner)
-    returning id into document_id;
-
-  select
-    net.http_post(
-      url := supabase_url() || '/functions/v1/process',
-      headers := jsonb_build_object(
-        'Content-Type', 'application/json',
-        'Authorization', current_setting('request.headers')::json->>'authorization'
-      ),
-      body := jsonb_build_object(
-        'document_id', document_id
-      )
-    )
-  into result;
-
-  return null;
-end;
-$$;
-
-create trigger on_file_upload
-  after insert on storage.objects
-  for each row
-  execute procedure private.handle_storage_update();
-
-create function supabase_url()
-returns text
-language plpgsql
-security definer
-as $$
-declare
-  secret_value text;
-begin
-  select decrypted_secret into secret_value from vault.decrypted_secrets where name = 'supabase_url';
-  return secret_value;
-end;
+-- Function to get the Supabase URL from the vault
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc 
+    WHERE proname = 'supabase_url'
+  ) THEN
+    CREATE FUNCTION supabase_url()
+    RETURNS text
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    AS $$
+    DECLARE
+      secret_value text;
+    BEGIN
+      SELECT decrypted_secret INTO secret_value FROM vault.decrypted_secrets WHERE name = 'supabase_url';
+      RETURN secret_value;
+    END;
+    $$;
+  END IF;
+END
 $$;
