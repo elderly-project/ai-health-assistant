@@ -60,13 +60,27 @@ A production-grade Next.js app that showcases AI-first product engineering for h
 
 ## Demos and media
 - Short demo clip: add your link here
-- Screenshots: place images under `assets/` and reference them below
+- Screenshots: save under `assets/` and replace the placeholders below
+
+![Landing — Personal Health Assistant](assets/landing.png)
+![Admin Dashboard](assets/admin-dashboard.png)
+![Patient Management](assets/patient-management.png)
+![Patient Dashboard](assets/patient-dashboard.png)
+![AI Chat — RAG over patient data](assets/ai-chat.png)
 
 ```
 assets/
-  hero.png
-  instructions.png
+  landing.png
+  admin-dashboard.png
+  patient-management.png
+  patient-dashboard.png
+  ai-chat.png
 ```
 
+## Companion Mobile App
+Looking for the mobile experience? See the companion app here: [elderly-project/MobileApp](https://github.com/elderly-project/MobileApp).
+
 ## Contact
-- If you’d like a quick tour or technical deep‑dive, feel free to reach out. 
+- If you’d like a quick tour or technical deep‑dive, feel free to reach out.
+
+_The mobile app for the elderly people to use is available at [https://github.com/elderly-project/MobileApp](https://github.com/elderly-project/MobileApp)._ 
